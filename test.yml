@@ -1,0 +1,29 @@
+- name: Set up K8s Cluster
+  hosts: k8s
+  become: yes
+  
+  tasks:
+  - name: Install Docker
+    package:
+      name: docker-ce
+      state: latest
+
+  - name: Install Kubernetes packages
+    package:
+      name: kubeadm
+      state: latest
+
+  - name: Initialize K8s control plane
+    command: kubeadm init --pod-network-cidr=10.244.0.0/16
+    when: "'controlplane' in inventory_hostname"
+
+  - name: Join worker nodes to K8s cluster
+    command: "{{ item }}"
+    with_items:
+      - "kubeadm join --token {{ lookup('file', '/etc/kubernetes/kubeadm-join-command.txt').split()[-1] }} {{ lookup('file', '/etc/kubernetes/kubeadm-join-command.txt').split()[-4] }}:{{ lookup('file', '/etc/kubernetes/kubeadm-join-command.txt').split()[-2] }} --discovery-token-ca-cert-hash sha256:{{ lookup('file', '/etc/kubernetes/kubeadm-join-command.txt').split()[-3] }}"
+    when: "'worker' in inventory_hostname"
+    become: yes
+
+  - name: Install flannel network
+    command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.13.0/Documentation/kube-flannel.yml
+    when: "'controlplane' in inventory_hostname"
